@@ -126,11 +126,8 @@ static bool     sweep_running   = false;
 static bool     sweep_lights_on = false; // lighting was off; turned on just for the sweep
 
 static void boot_sweep_start(void) {
-    for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; i++) sweep_led[i] = via_mode;
-    for (uint8_t col = 0; col < MATRIX_COLS; col++) {
-        uint8_t led = g_led_config.matrix_co[0][col];
-        if (led != NO_LED) sweep_led[led] = true;
-    }
+    // Top row by position: on the Q3 its rightmost key isn't in matrix row 0
+    for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; i++) sweep_led[i] = via_mode || g_led_config.point[i].y == 0;
     sweep_timer   = timer_read32();
     sweep_running = true;
     if (!rgb_matrix_is_enabled()) {
