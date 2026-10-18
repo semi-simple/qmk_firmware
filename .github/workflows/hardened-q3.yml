@@ -14,6 +14,12 @@ on:
       - 'keyboards/keychron/q3/**'
       - '.github/workflows/hardened-q3.yml'
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Publish the binaries as a GitHub release (creates the tag)'
+        type: string
+        default: ''
+        required: false
 
 permissions:
   contents: read
@@ -67,7 +73,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/hardened-q3-v')
+    # Runs for a pushed hardened-q3-v* tag, or a manual run with a release name such as hardened-q3-v1
+    if: startsWith(github.ref, 'refs/tags/hardened-q3-v') || startsWith(inputs.release, 'hardened-q3-v')
     needs: build
     runs-on: ubuntu-24.04
     permissions:
@@ -80,8 +87,10 @@ jobs:
       - name: Publish a release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release || github.ref_name }}
         run: |
-          gh release create "$GITHUB_REF_NAME" out/* \
+          gh release create "$TAG" out/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Hardened Keychron Q3 firmware ($GITHUB_REF_NAME)" \
+            --target "$GITHUB_SHA" \
+            --title "Hardened Keychron Q3 firmware ($TAG)" \
             --notes "Built by GitHub Actions from commit $GITHUB_SHA and checked byte-for-byte against users/hardened/SHA256SUMS. Flash with users/hardened/flasher.html or dfu-util; see users/hardened/README.md."
