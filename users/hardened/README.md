@@ -48,6 +48,13 @@ Checked in the compiled firmware (VIA-capable build):
 | Changing the chip's protection settings (option bytes) | The unlock keys aren't in the binary at all. |
 | VIA commands in hardened mode | Dropped at the first step, before any of them are read. |
 
+The guard sits in `bootloader_jump()` itself, so it applies to every caller, including
+any added by future QMK versions. At power-up, QMK checks whether Esc is held and asks
+for update mode; the guard agrees because the keyboard is still starting up. `QK_BOOT`
+is QMK's "enter update mode" keycode. It isn't in this keymap, but a program could put it
+on a key in VIA mode and wait for you to press it. That request always comes after
+startup, so the guard refuses and the keyboard just restarts.
+
 What the firmware can't change:
 
 1. **Physical paths besides Esc.** The reset button under the spacebar keycap is
