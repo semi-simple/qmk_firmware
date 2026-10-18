@@ -36,14 +36,18 @@ jobs:
             gcc-arm-none-eabi=15:13.2.rel1-2 binutils-arm-none-eabi libnewlib-arm-none-eabi dfu-util
           arm-none-eabi-gcc --version | head -1
           python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install -q -r requirements.txt
+          "$RUNNER_TEMP/venv/bin/pip" install -q -r requirements.txt qmk==1.2.0
 
       - name: Build all variants
         run: |
           export PATH="$RUNNER_TEMP/venv/bin:$PATH"
           mkdir -p out
           for v in ansi ansi_encoder iso iso_encoder jis jis_encoder; do
-            make "keychron/q3/$v:hardened"
+            if ! make "keychron/q3/$v:hardened" > build.log 2>&1; then
+              # Surface the failure as annotations, which stay readable without the full log
+              grep -iE "error|cannot|not found" build.log | tail -10 | sed 's/^/::error::'"$v"': /'
+              exit 1
+            fi
             cp ".build/keychron_q3_${v}_hardened.bin" out/
           done
 
