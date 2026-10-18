@@ -14,6 +14,10 @@ while plugging in the cable. Nothing running on the computer can trigger an upda
 - No dynamic keymaps or macros, so nothing on the computer can remap keys or store
   key sequences on the keyboard.
 - The build stops with an error if any of these features is turned back on.
+- On every plug-in, a rainbow comet runs once across the top row (under a second).
+  It tells you this firmware, not the stock one, is running. It is not proof against
+  tampering, since anyone able to reflash the keyboard could copy it; the backup check
+  below is the real proof.
 
 Remapping now means editing `keyboards/keychron/q3/<variant>/keymaps/hardened/keymap.c`,
 rebuilding and reflashing.
