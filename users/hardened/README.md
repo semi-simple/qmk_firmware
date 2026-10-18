@@ -33,6 +33,40 @@ while plugging in the cable. Nothing running on the computer can trigger an upda
 In hardened mode, remapping means editing
 `keyboards/keychron/q3/<variant>/keymaps/hardened/keymap.c`, rebuilding and reflashing.
 
+## What protects against reflashing
+
+In both modes the only designed way to reflash is holding Esc while plugging in.
+Checked in the compiled firmware (VIA-capable build):
+
+| What reflashing would need | What the firmware contains |
+|---|---|
+| Arm the bootloader marker | Only the guarded `bootloader_jump()` does it, and it refuses unless the keyboard is still starting up and Esc is held. |
+| Request a jump to the bootloader | Only two callers, both behind that guard: the Esc-at-plug-in check, and the `QK_BOOT` key path (a remapped key just reboots). |
+| Jump into the ROM bootloader | Only at power-on, and only if that marker was armed. |
+| Keychron's `JumpToBootloader` command (stock) | Not present. Upstream QMK's VIA has no bootloader command either. |
+| Firmware rewriting its own flash | Only the settings storage writes flash, confined to a reserved 4 KB area at the end. VIA's keymap writes go through it, so they can't reach the program code. |
+| Changing the chip's protection settings (option bytes) | The unlock keys aren't in the binary at all. |
+| VIA commands in hardened mode | Dropped at the first step, before any of them are read. |
+
+What the firmware can't change:
+
+1. **Physical paths besides Esc.** The reset button under the spacebar keycap is
+   wired to the chip itself, and so are the debug (SWD) pads on the circuit board.
+   Both reach the built-in bootloader whatever the firmware does. They need the keycap
+   off or the case open, so nothing on the computer can use them: no reflash without
+   hands on the keyboard.
+2. **Update mode accepts any firmware.** Whoever holds Esc while plugging in can flash
+   anything. That's by design.
+3. **Undiscovered bugs.** The guarantee covers every designed path. A memory-safety bug
+   in code the computer can reach could, in theory, let an attacker run their own code,
+   and the chip lets its own code rewrite its flash. In hardened mode that code is the
+   USB stack plus the step that drops VIA packets; in VIA mode it also includes VIA's
+   command handling. For the smallest surface, build with `HARDENED_VIA_MODE=no`: VIA
+   isn't compiled in at all and the keyboard has no channel for data from the computer.
+
+For comparison, the stock Keychron firmware enters update mode on a single packet
+from any program, with no key press.
+
 ## Build
 
 ```sh
