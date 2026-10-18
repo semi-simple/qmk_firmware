@@ -138,18 +138,20 @@ uint16_t config_without_interface(const uint8_t *in, uint16_t len, uint8_t drop,
 }
 
 // In hardened mode the host is shown the keyboard without VIA's interface.
-void usb_descriptor_override_kb(uint16_t wValue, const void **address, uint16_t *size) {
+bool usb_get_descriptor_user(uint16_t wValue, uint16_t wIndex, const void **address, uint16_t *size) {
     static uint8_t  hidden[sizeof(USB_Descriptor_Configuration_t)];
     static uint16_t hidden_size = 0;
-    if (usb_shows_via || (wValue >> 8) != DTYPE_Configuration || *address == NULL) return;
+    if (usb_shows_via || (wValue >> 8) != DTYPE_Configuration || *address == NULL) return true;
     if (hidden_size == 0) hidden_size = config_without_interface(*address, *size, RAW_INTERFACE, hidden);
     *address = hidden;
     *size    = hidden_size;
+    return true;
 }
 
 // The host numbers the interfaces after the hidden one one lower than QMK does.
-uint8_t usb_interface_from_host_kb(uint8_t interface) {
-    return (!usb_shows_via && interface >= RAW_INTERFACE) ? interface + 1 : interface;
+bool usb_interface_from_host_user(uint8_t *interface) {
+    if (!usb_shows_via && *interface >= RAW_INTERFACE) (*interface)++;
+    return true;
 }
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {

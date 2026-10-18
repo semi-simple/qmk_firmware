@@ -71,15 +71,27 @@ static bool __attribute__((__unused__)) receive_report(usb_endpoint_out_lut_t en
 #endif
 
 /*
- * Let the keyboard present its interfaces differently from the built-in
- * descriptors, for example hide one. usb_descriptor_override_kb() may replace
- * any descriptor; usb_interface_from_host_kb() maps the interface number the
- * host uses to the one QMK uses. The defaults keep everything as built.
+ * Lets a keyboard or keymap replace a descriptor before it's sent
  */
-__attribute__((weak)) void usb_descriptor_override_kb(uint16_t wValue, const void **address, uint16_t *size) {}
+__attribute__((weak)) bool usb_get_descriptor_user(uint16_t wValue, uint16_t wIndex, const void **address, uint16_t *size) {
+    return true;
+}
 
-__attribute__((weak)) uint8_t usb_interface_from_host_kb(uint8_t interface) {
-    return interface;
+__attribute__((weak)) bool usb_get_descriptor_kb(uint16_t wValue, uint16_t wIndex, const void **address, uint16_t *size) {
+    return usb_get_descriptor_user(wValue, wIndex, address, size);
+}
+
+/*
+ * Lets a keyboard or keymap map the interface number in a request from the
+ * host to the one QMK uses, e.g. after leaving an interface out of the
+ * configuration descriptor
+ */
+__attribute__((weak)) bool usb_interface_from_host_user(uint8_t *interface) {
+    return true;
+}
+
+__attribute__((weak)) bool usb_interface_from_host_kb(uint8_t *interface) {
+    return usb_interface_from_host_user(interface);
 }
 
 /*
@@ -93,7 +105,7 @@ static const USBDescriptor *usb_get_descriptor_cb(USBDriver *usbp, uint8_t dtype
     static USBDescriptor descriptor;
     const void          *address = NULL;
     uint16_t             size    = get_usb_descriptor(setup->wValue.word, setup->wIndex, setup->wLength, &address);
-    usb_descriptor_override_kb(setup->wValue.word, &address, &size);
+    usb_get_descriptor_kb(setup->wValue.word, setup->wIndex, &address, &size);
     descriptor.ud_string = address;
     descriptor.ud_size   = size;
 
@@ -264,9 +276,13 @@ static void set_led_transfer_cb(USBDriver *usbp) {
 static bool usb_requests_hook_cb(USBDriver *usbp) {
     usb_control_request_t *setup = (usb_control_request_t *)usbp->setup;
 
-    /* Translate the host's interface number before anything reads it */
+    /* Map the host's interface number before anything reads it */
     if ((setup->bmRequestType & USB_RTYPE_RECIPIENT_MASK) == USB_RTYPE_RECIPIENT_INTERFACE) {
-        setup->wIndex = usb_interface_from_host_kb(setup->wIndex & 0xFF);
+        uint8_t interface = setup->wIndex & 0xFF;
+        usb_interface_from_host_kb(&interface);
+        if (interface != (setup->wIndex & 0xFF)) {
+            setup->wIndex = interface;
+        }
     }
 
     /* Handle HID class specific requests */
