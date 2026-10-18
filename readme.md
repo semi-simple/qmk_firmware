@@ -1,3 +1,11 @@
+> [!NOTE]
+> **Hardened Keychron Q3 firmware.** This fork adds firmware for the wired Keychron Q3 that can only be
+> updated by holding Esc while plugging the keyboard in. Nothing on the computer can trigger an update.
+>
+> - **[Open the flasher](https://semi-simple.github.io/qmk_firmware/)** (Chrome or Edge, keyboard in DFU mode)
+> - **[Download the firmware](https://github.com/semi-simple/qmk_firmware/releases)** from the releases
+> - **[How it works, building and verifying](users/hardened/README.md)**
+
 # Quantum Mechanical Keyboard Firmware
 
 [![Current Version](https://img.shields.io/github/tag/qmk/qmk_firmware.svg)](https://github.com/qmk/qmk_firmware/tags)
