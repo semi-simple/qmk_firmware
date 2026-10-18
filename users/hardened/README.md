@@ -12,12 +12,14 @@ while plugging in the cable. Nothing running on the computer can trigger an upda
   `HARDENED_VIA_MODE = no` in `users/hardened/rules.mk`, or
   `make keychron/q3/ansi:hardened HARDENED_VIA_MODE=no`; VIA is then not built at all
   and the keyboard has no raw HID interface):
-  - **Hardened (default):** every VIA command from the computer is dropped without a
-    reply, and the keys come from the keymap built into the firmware. Anything changed
-    through VIA is ignored. VIA's raw HID interface is still visible over USB.
+  - **Hardened (default):** the keyboard shows the computer only its keyboard and
+    media/NKRO interfaces, so VIA doesn't even list it. Should VIA commands arrive
+    anyway, they're dropped without a reply. The keys come from the keymap built into
+    the firmware; anything changed through VIA is ignored.
   - **VIA (hold F1 while plugging in):** VIA and Keychron Launcher work, so keys and
     macros can be changed from the computer, and those changes apply in this mode only.
-    Any program on the computer can use this channel while the mode is on. Even so,
+    The keyboard briefly reconnects at plug-in to show its VIA interface. Any program
+    on the computer can use this channel while the mode is on. Even so,
     it can't reflash the keyboard (the bootloader guard applies in both modes) or
     read which keys you press (`VIA_INSECURE` is refused).
 - Keychron's own raw HID commands are gone. The stock firmware accepts a packet
@@ -46,7 +48,7 @@ Checked in the compiled firmware (VIA-capable build):
 | Keychron's `JumpToBootloader` command (stock) | Not present. Upstream QMK's VIA has no bootloader command either. |
 | Firmware rewriting its own flash | Only the settings storage writes flash, confined to a reserved 4 KB area at the end. VIA's keymap writes go through it, so they can't reach the program code. |
 | Changing the chip's protection settings (option bytes) | The unlock keys aren't in the binary at all. |
-| VIA commands in hardened mode | Dropped at the first step, before any of them are read. |
+| VIA in hardened mode | Its interface isn't shown to the computer, and any command that arrives anyway is dropped before it's read. |
 
 The guard sits in `bootloader_jump()` itself, so it applies to every caller, including
 any added by future QMK versions. At power-up, QMK checks whether Esc is held and asks
@@ -67,7 +69,7 @@ What the firmware can't change:
 3. **Undiscovered bugs.** The guarantee covers every designed path. A memory-safety bug
    in code the computer can reach could, in theory, let an attacker run their own code,
    and the chip lets its own code rewrite its flash. In hardened mode that code is the
-   USB stack plus the step that drops VIA packets; in VIA mode it also includes VIA's
+   USB stack; in VIA mode it also includes VIA's
    command handling. For the smallest surface, build with `HARDENED_VIA_MODE=no`: VIA
    isn't compiled in at all and the keyboard has no channel for data from the computer.
 
