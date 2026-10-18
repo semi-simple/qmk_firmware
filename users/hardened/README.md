@@ -8,19 +8,30 @@ while plugging in the cable. Nothing running on the computer can trigger an upda
 - `hardened.c` replaces `bootloader_jump()`, the single function every route into
   the bootloader goes through. It refuses unless the keyboard is still starting up
   **and** Esc (matrix position K00) is held down. Anything else just reboots.
-- No raw HID channel at all: VIA, Keychron Launcher, XAP, console and the Keychron
-  factory-test commands are gone. Keychron's stock firmware accepts a raw HID packet
+- Two modes, chosen when you plug the keyboard in (switch this feature off with
+  `HARDENED_VIA_MODE = no` in `users/hardened/rules.mk`, or
+  `make keychron/q3/ansi:hardened HARDENED_VIA_MODE=no`; VIA is then not built at all
+  and the keyboard has no raw HID interface):
+  - **Hardened (default):** every VIA command from the computer is dropped without a
+    reply, and the keys come from the keymap built into the firmware. Anything changed
+    through VIA is ignored. VIA's raw HID interface is still visible over USB.
+  - **VIA (hold F1 while plugging in):** VIA and Keychron Launcher work, so keys and
+    macros can be changed from the computer, and those changes apply in this mode only.
+    Any program on the computer can use this channel while the mode is on. Even so,
+    it can't reflash the keyboard (the bootloader guard applies in both modes) or
+    read which keys you press (`VIA_INSECURE` is refused).
+- Keychron's own raw HID commands are gone. The stock firmware accepts a packet
   (`0xAB 0x03 "JumpToBootloader"` + checksum) that enters DFU with no key press.
-- No dynamic keymaps or macros, so nothing on the computer can remap keys or store
-  key sequences on the keyboard.
-- The build stops with an error if any of these features is turned back on.
-- On every plug-in, a rainbow comet runs once across the top row (under a second).
-  It tells you this firmware, not the stock one, is running. It is not proof against
-  tampering, since anyone able to reflash the keyboard could copy it; the backup check
-  below is the real proof.
+- No on-keyboard macro recording, XAP, console or Command. The build stops with an
+  error if any of these, or `VIA_INSECURE`, is turned on.
+- On every plug-in, a rainbow comet runs once from left to right (about 1.6 s):
+  across the top row in hardened mode, across the whole keyboard in VIA mode. It
+  tells you this firmware, not the stock one, is running, and in which mode. It is
+  not proof against tampering, since anyone able to reflash the keyboard could copy
+  it; the backup check below is the real proof.
 
-Remapping now means editing `keyboards/keychron/q3/<variant>/keymaps/hardened/keymap.c`,
-rebuilding and reflashing.
+In hardened mode, remapping means editing
+`keyboards/keychron/q3/<variant>/keymaps/hardened/keymap.c`, rebuilding and reflashing.
 
 ## Build
 
