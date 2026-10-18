@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- No network access at all: everything this page needs is inline. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
+<title>Q3 Firmware Flasher</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --border: #e2e0da;
+    --accent: #2f5bd3; --accent-text: #ffffff; --ok: #1f7a46; --warn: #a15c00; --err: #b3261e;
+    --log-bg: #f0efeb; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --card: #1f1f1d; --text: #ecebe7; --muted: #a09e98; --border: #33322f;
+      --accent: #7d9cff; --accent-text: #0e1220; --ok: #5cc98a; --warn: #f0b04a; --err: #ff8a80; --log-bg: #191918;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161615; --card: #1f1f1d; --text: #ecebe7; --muted: #a09e98; --border: #33322f;
+    --accent: #7d9cff; --accent-text: #0e1220; --ok: #5cc98a; --warn: #f0b04a; --err: #ff8a80; --log-bg: #191918;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; }
+  h2 { font-size: 15px; margin: 0 0 8px; display: flex; gap: 10px; align-items: center; }
+  .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 12px; font-weight: 600; flex: none; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 13.5px; }
+  button, .filebtn { font: inherit; font-weight: 600; border-radius: 7px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); }
+  button.secondary, .filebtn { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+  input[type=file] { display: none; }
+  .kv { font-family: var(--mono); font-size: 12.5px; word-break: break-all; margin-top: 10px; display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+  progress { width: 100%; height: 10px; margin-top: 12px; accent-color: var(--accent); }
+  #log { background: var(--log-bg); border: 1px solid var(--border); border-radius: 7px; font-family: var(--mono); font-size: 12px; padding: 10px 12px; height: 220px; overflow: auto; white-space: pre-wrap; margin: 0; }
+  label.check { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; font-size: 14px; }
+  .banner { border-left: 3px solid var(--warn); padding: 8px 12px; background: var(--card); border-radius: 0 7px 7px 0; margin-bottom: 14px; }
+  kbd { font-family: var(--mono); font-size: 12px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Keychron Q3 firmware flasher</h1>
+  <p class="sub">Flashes a .bin file to the STM32 DFU bootloader over WebUSB. This page makes no network requests; your firmware never leaves your computer.</p>
+
+  <div class="banner" id="support" hidden></div>
+
+  <section>
+    <h2><span class="n">1</span>Put the keyboard in DFU mode and connect</h2>
+    <p>Unplug the keyboard, hold <kbd>Esc</kbd>, plug the cable back in, then release. (Fallback: remove the spacebar keycap and hold the reset button on the PCB while plugging in.) The keys and lights stay dead while it is in DFU mode.</p>
+    <div class="row">
+      <button id="connect">Connect to keyboard</button>
+      <span id="devstatus" class="muted">Not connected</span>
+    </div>
+    <dl class="kv" id="devinfo" hidden></dl>
+  </section>
+
+  <section id="protection" hidden>
+    <h2>Flash protection is on</h2>
+    <p>This chip refuses to erase or write its flash while read-out protection is on. Removing it is a standard STM32 step: the chip wipes its whole flash and turns protection off. The current firmware is lost and can't be backed up (protection blocks reading it). The built-in bootloader is not affected.</p>
+    <p class="muted">Afterwards the keyboard restarts with empty flash, so Esc can no longer put it in DFU mode. Unplug it, then hold the reset button under the spacebar while plugging it back in, and connect again here.</p>
+    <label class="check"><input type="checkbox" id="unprotect-ok"> I understand this erases the keyboard's current firmware</label>
+    <div class="row"><button id="unprotect" disabled>Remove protection and erase</button></div>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span>Back up the current firmware <span class="muted" style="font-weight:400">(recommended)</span></h2>
+    <p class="muted">Reads the whole flash and saves it as a file, so you can go back to exactly what is on the keyboard now. This fails if the vendor enabled read-out protection.</p>
+    <div class="row"><button id="backup" class="secondary" disabled>Download backup</button></div>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>Choose the firmware file</h2>
+    <div class="row">
+      <label class="filebtn" for="file">Choose .bin file</label>
+      <input type="file" id="file" accept=".bin,application/octet-stream">
+      <span id="fileinfo" class="muted">No file chosen</span>
+    </div>
+    <dl class="kv" id="filecheck" hidden></dl>
+  </section>
+
+  <section>
+    <h2><span class="n">4</span>Flash</h2>
+    <p class="muted">Erases only the pages the new firmware needs, writes it, reads it back to verify, then restarts the keyboard.</p>
+    <label class="check"><input type="checkbox" id="verify" checked> Verify by reading the flash back after writing</label>
+    <div class="row"><button id="flash" disabled>Flash firmware</button></div>
+    <progress id="progress" value="0" max="1" hidden></progress>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<!-- DfuSe protocol (no DOM access; kept separate so it can be tested on its own). -->
+<script id="dfu-lib">
+"use strict";
+const DFU = { DETACH: 0, DNLOAD: 1, UPLOAD: 2, GETSTATUS: 3, CLRSTATUS: 4, GETSTATE: 5, ABORT: 6 };
+const ST = { appIDLE: 0, appDETACH: 1, dfuIDLE: 2, dfuDNLOAD_SYNC: 3, dfuDNBUSY: 4, dfuDNLOAD_IDLE: 5,
+             dfuMANIFEST_SYNC: 6, dfuMANIFEST: 7, dfuMANIFEST_WAIT_RESET: 8, dfuUPLOAD_IDLE: 9, dfuERROR: 10 };
+const STM32_DFU_FILTER = { vendorId: 0x0483, productId: 0xdf11 };
+const STM32L432_FLASH = "@Internal Flash  /0x08000000/0128*0002Kg";
+const MIN_BUSY_POLL_MS = 50;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// "@Internal Flash  /0x08000000/0128*0002Kg" -> { name, segments: [{start, sectorSize, count, erasable, writable, readable}] }
+function parseMemoryLayout(desc) {
+  const m = /^@([^/]+)\/(0x[0-9a-fA-F]+)\/(.*)$/.exec((desc || "").trim());
+  if (!m) return null;
+  let addr = parseInt(m[2], 16);
+  const segments = [];
+  for (const part of m[3].split(",")) {
+    const s = /^\s*(\d+)\s*\*\s*(\d+)\s*([ BKM ]?)\s*([a-g])\s*$/.exec(part);
+    if (!s) return null;
+    const mult = { K: 1024, M: 1048576 }[s[3]] || 1;
+    const count = parseInt(s[1], 10), sectorSize = parseInt(s[2], 10) * mult;
+    const flags = s[4].charCodeAt(0) - 0x60; // a=1 ... g=7: bit0 readable, bit1 erasable, bit2 writable
+    segments.push({ start: addr, sectorSize, count, end: addr + count * sectorSize,
+                    readable: !!(flags & 1), erasable: !!(flags & 2), writable: !!(flags & 4) });
+    addr += count * sectorSize;
+  }
+  return { name: m[1].trim(), segments };
+}
+
+class DfuSe {
+  constructor(device, intf, altSetting, name, transferSize, log, alts) {
+    Object.assign(this, { device, intf, altSetting, name, transferSize, log: log || (() => {}), alts: alts || [] });
+    this.layout = parseMemoryLayout(name);
+  }
+
+  static async open(device, log) {
+    log = log || (() => {});
+    await device.open();
+    if (device.configuration === null) await device.selectConfiguration(1);
+    // Some browser/OS combinations leave alt.interfaceName empty, so read the names from the device too.
+    const names = await DfuSe.readInterfaceNames(device).catch(e => { log("Could not read interface names: " + e.message, "warn"); return {}; });
+    const dfuAlts = [];
+    for (const intf of device.configuration.interfaces)
+      for (const alt of intf.alternates)
+        if (alt.interfaceClass === 0xfe && alt.interfaceSubclass === 0x01)
+          dfuAlts.push({ intf, alt, name: alt.interfaceName || names[`${intf.interfaceNumber}:${alt.alternateSetting}`] || null });
+    if (!dfuAlts.length) throw new Error("This device has no DFU interface. Is the keyboard in DFU mode?");
+    let found = dfuAlts.find(a => /^@Internal Flash/i.test(a.name || ""));
+    if (!found && dfuAlts.every(a => !a.name)) {
+      // STM32 ROM bootloaders always put internal flash on alternate setting 0.
+      found = dfuAlts.find(a => a.alt.alternateSetting === 0);
+      if (found) {
+        found.name = STM32L432_FLASH;
+        log("Device did not report its memory layout; assuming the Q3's STM32L432 (256 KiB, 2 KiB pages)", "warn");
+      }
+    }
+    if (!found) {
+      const seen = dfuAlts.map(a => `alt ${a.alt.alternateSetting}: ${a.name || "(no name)"}`).join("; ");
+      throw new Error("No '@Internal Flash' DFU interface found. Interfaces seen: " + seen);
+    }
+    await device.claimInterface(found.intf.interfaceNumber);
+    await device.selectAlternateInterface(found.intf.interfaceNumber, found.alt.alternateSetting);
+    const transferSize = await DfuSe.readTransferSize(device).catch(() => null) || 1024;
+    const d = new DfuSe(device, found.intf.interfaceNumber, found.alt.alternateSetting, found.name, transferSize, log, dfuAlts);
+    if (!d.layout) throw new Error("Could not parse flash layout: " + found.name);
+    return d;
+  }
+
+  static async readConfigDescriptor(device) {
+    const get = len => device.controlTransferIn({ requestType: "standard", recipient: "device", request: 6, value: 0x0200, index: 0 }, len);
+    const head = await get(9);
+    return (await get(head.data.getUint16(2, true))).data;
+  }
+
+  // { "interface:alternate": "string from iInterface" }
+  static async readInterfaceNames(device) {
+    const v = await DfuSe.readConfigDescriptor(device), names = {};
+    for (let i = 0; i + 1 < v.byteLength; ) {
+      const len = v.getUint8(i);
+      if (len === 0) break;
+      if (v.getUint8(i + 1) === 0x04 && len >= 9 && v.getUint8(i + 8)) {
+        const r = await device.controlTransferIn({ requestType: "standard", recipient: "device", request: 6, value: 0x0300 | v.getUint8(i + 8), index: 0x0409 }, 255);
+        const s = r.data, n = Math.min(s.getUint8(0), s.byteLength);
+        let str = "";
+        for (let j = 2; j + 1 < n; j += 2) str += String.fromCharCode(s.getUint16(j, true));
+        names[`${v.getUint8(i + 2)}:${v.getUint8(i + 3)}`] = str;
+      }
+      i += len;
+    }
+    return names;
+  }
+
+  // wTransferSize from the DFU functional descriptor (type 0x21) in the configuration descriptor
+  static async readTransferSize(device) {
+    const v = await DfuSe.readConfigDescriptor(device);
+    for (let i = 0; i + 1 < v.byteLength; ) {
+      const len = v.getUint8(i);
+      if (len === 0) break;
+      if (v.getUint8(i + 1) === 0x21 && len >= 7) return v.getUint16(i + 5, true);
+      i += len;
+    }
+    return null;
+  }
+
+  get flash() { return this.layout.segments[0].start; }
+  get flashEnd() { return this.layout.segments[this.layout.segments.length - 1].end; }
+
+  async out(request, value, data) {
+    const r = await this.device.controlTransferOut({ requestType: "class", recipient: "interface", request, value, index: this.intf }, data);
+    if (r.status !== "ok") throw new Error(`DFU request ${request} failed: ${r.status}`);
+  }
+  async in(request, value, length) {
+    const r = await this.device.controlTransferIn({ requestType: "class", recipient: "interface", request, value, index: this.intf }, length);
+    if (r.status !== "ok") throw new Error(`DFU request ${request} failed: ${r.status}`);
+    return r.data;
+  }
+  async getStatus() {
+    const d = await this.in(DFU.GETSTATUS, 0, 6);
+    return { status: d.getUint8(0), pollTimeout: d.getUint8(1) | (d.getUint8(2) << 8) | (d.getUint8(3) << 16), state: d.getUint8(4) };
+  }
+  // A STALLed control request is cleared by the next SETUP packet, so a retry is safe.
+  async getStatusRetry() {
+    for (let i = 0; ; i++) {
+      try { return await this.getStatus(); } catch (e) {
+        if (i >= 3) throw e;
+        this.log(`Status request failed (${e.message}), retrying…`, "warn");
+        await sleep(100 * (i + 1));
+      }
+    }
+  }
+  async waitIdle(okStates) {
+    for (;;) {
+      const s = await this.getStatusRetry();
+      if (s.status !== 0 || s.state === ST.dfuERROR) {
+        await this.out(DFU.CLRSTATUS, 0).catch(() => {});
+        throw new Error(`Device reported error (status ${s.status}, state ${s.state})`);
+      }
+      if (okStates.includes(s.state)) return s;
+      // The STM32L43x ROM bootloader reports a too-short bwPollTimeout after erase and write, and STALLs a
+      // GETSTATUS that arrives before the flash operation is done (page erase takes ~25 ms).
+      await sleep(Math.max(s.pollTimeout, s.state === ST.dfuDNBUSY ? MIN_BUSY_POLL_MS : 1));
+    }
+  }
+
+  // Bring the device to dfuIDLE no matter what state a previous tool left it in.
+  async reset() {
+    let s = await this.getStatus();
+    if (s.state === ST.dfuERROR) { await this.out(DFU.CLRSTATUS, 0); s = await this.getStatus(); }
+    if (s.state !== ST.dfuIDLE) { await this.out(DFU.ABORT, 0); s = await this.getStatus(); }
+    if (s.state !== ST.dfuIDLE) throw new Error("Device would not go idle (state " + s.state + ")");
+  }
+
+  async command(cmd, addr) {
+    const b = new Uint8Array(addr === undefined ? 1 : 5);
+    b[0] = cmd;
+    if (addr !== undefined) new DataView(b.buffer).setUint32(1, addr, true);
+    const what = ({ 0x21: "set address", 0x41: "erase page", 0x92: "remove protection" }[cmd] || "command 0x" + cmd.toString(16)) +
+                 (addr === undefined ? "" : " 0x" + addr.toString(16));
+    try {
+      await this.out(DFU.DNLOAD, 0, b);
+      await this.waitIdle([ST.dfuDNLOAD_IDLE]);
+    } catch (e) {
+      throw new Error(`${what}: ${e.message}`);
+    }
+  }
+  setAddress(addr) { return this.command(0x21, addr); }
+  erasePage(addr) { return this.command(0x41, addr); }
+
+  sectorsFor(start, length) {
+    const end = start + length, out = [];
+    for (const seg of this.layout.segments)
+      for (let a = seg.start; a < seg.end; a += seg.sectorSize)
+        if (a < end && a + seg.sectorSize > start) {
+          if (!seg.erasable) throw new Error("Region at 0x" + a.toString(16) + " is not erasable");
+          out.push(a);
+        }
+    return out;
+  }
+
+  checkRange(start, length) {
+    if (start < this.flash || start + length > this.flashEnd)
+      throw new Error(`Image (${length} bytes at 0x${start.toString(16)}) does not fit in flash 0x${this.flash.toString(16)}–0x${this.flashEnd.toString(16)}`);
+  }
+
+  async write(start, data, progress) {
+    this.checkRange(start, data.byteLength);
+    await this.reset();
+    const pages = this.sectorsFor(start, data.byteLength);
+    const total = pages.length + Math.ceil(data.byteLength / this.transferSize);
+    let done = 0;
+    this.log(`Erasing ${pages.length} page(s)…`);
+    for (const p of pages) { await this.erasePage(p); progress && progress(++done / total, "erase"); }
+    this.log(`Writing ${data.byteLength} bytes in ${this.transferSize}-byte blocks…`);
+    for (let off = 0; off < data.byteLength; off += this.transferSize) {
+      await this.setAddress(start + off);
+      await this.out(DFU.DNLOAD, 2, data.slice(off, off + this.transferSize));
+      await this.waitIdle([ST.dfuDNLOAD_IDLE]);
+      progress && progress(++done / total, "write");
+    }
+  }
+
+  async read(start, length, progress) {
+    this.checkRange(start, length);
+    await this.reset();
+    await this.setAddress(start);
+    await this.out(DFU.ABORT, 0); // back to dfuIDLE, address pointer is kept
+    const buf = new Uint8Array(length);
+    for (let off = 0, block = 2; off < length; off += this.transferSize, block++) {
+      const n = Math.min(this.transferSize, length - off);
+      const d = await this.in(DFU.UPLOAD, block, this.transferSize);
+      if (d.byteLength < n) throw new Error("Short read at offset " + off + " (read-out protection?)");
+      buf.set(new Uint8Array(d.buffer, d.byteOffset, n), off);
+      progress && progress((off + n) / length, "read");
+    }
+    await this.out(DFU.ABORT, 0);
+    return buf;
+  }
+
+  // Can the bootloader read flash? A protected chip refuses.
+  async canRead() {
+    try { await this.read(this.flash, 8); return true; }
+    catch (e) { await this.reset().catch(() => {}); return false; }
+  }
+
+  // STM32L4 option bytes (alt "@Option Bytes /0x1FFF7800"): RDP level and write-protected page ranges.
+  async readProtection() {
+    const ob = this.alts.find(a => /^@Option Bytes/i.test(a.name || ""));
+    const layout = ob && parseMemoryLayout(ob.name);
+    if (!layout || layout.segments[0].start !== 0x1fff7800) return null;
+    await this.device.selectAlternateInterface(this.intf, ob.alt.alternateSetting);
+    try {
+      await this.reset();
+      await this.setAddress(0x1fff7800);
+      await this.out(DFU.ABORT, 0);
+      const d = await this.in(DFU.UPLOAD, 2, 40);
+      await this.out(DFU.ABORT, 0);
+      if (d.byteLength < 4) return null;
+      const rdp = d.getUint8(0);
+      const res = { rdp, level: rdp === 0xaa ? 0 : rdp === 0xcc ? 2 : 1, wrp: [] };
+      for (const off of [0x18, 0x20]) { // WRP1AR, WRP1BR: start page in bits 7:0, end page in bits 23:16
+        if (d.byteLength < off + 4) continue;
+        const w = d.getUint32(off, true), start = w & 0xff, end = (w >> 16) & 0xff;
+        if (start <= end) res.wrp.push([start, end]);
+      }
+      return res;
+    } finally {
+      await this.device.selectAlternateInterface(this.intf, this.altSetting).catch(() => {});
+    }
+  }
+
+  // DfuSe "Read Unprotect": the chip mass-erases its flash, sets RDP level 0 and restarts.
+  async unprotect() {
+    await this.reset();
+    await this.out(DFU.DNLOAD, 0, new Uint8Array([0x92]));
+    try { await this.getStatus(); } catch (e) { /* device resets */ }
+  }
+
+  // dfu-util ":leave" equivalent: point at the image and send a zero-length download.
+  async leave(start) {
+    await this.reset();
+    await this.setAddress(start);
+    await this.out(DFU.DNLOAD, 0, new Uint8Array(0));
+    try { await this.getStatus(); } catch (e) { /* device usually resets here */ }
+  }
+}
+
+// Basic check that a file looks like an STM32L432 application image placed at 0x08000000.
+function inspectImage(bytes, flashBase, flashEnd, ramStart, ramEnd) {
+  const problems = [];
+  if (bytes.byteLength < 8) return ["File is too small to be a firmware image"];
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const sp = v.getUint32(0, true), reset = v.getUint32(4, true);
+  if (sp < ramStart || sp > ramEnd) problems.push(`Initial stack pointer 0x${sp.toString(16)} is not in RAM`);
+  if (!(reset & 1) || (reset & ~1) < flashBase || (reset & ~1) >= flashBase + bytes.byteLength)
+    problems.push(`Reset vector 0x${reset.toString(16)} does not point into the image`);
+  if (flashBase + bytes.byteLength > flashEnd) problems.push("Image is larger than the flash");
+  return problems;
+}
+
+if (typeof module !== "undefined") module.exports = { DfuSe, parseMemoryLayout, inspectImage, ST, DFU };
+</script>
+
+<script>
+"use strict";
+// SHA-256 of the builds produced in the Claude session (qmk_firmware @ 180f394b).
+const KNOWN = {
+  "e0fce9caf855d01ec6aa0b880c29742e0288f4fce7b82c0945398e9589bb427f": "keychron_q3_ansi_hardened.bin",
+  "c5c1920518d95b3401171bdda55f0a1370ee7bec91f47a5477f7576c62436840": "keychron_q3_ansi_encoder_hardened.bin",
+  "0c43d04e7d0e70eaacf824c787a301e4e426c26fecc323288461ffd7d8aecf96": "keychron_q3_iso_hardened.bin",
+  "744e48826086b054105462071fc2ad354a0acb9b5d27e6fc7d9527b7fe1619aa": "keychron_q3_iso_encoder_hardened.bin",
+  "2c95a5eabb48af6ace654daf66fa8ddb5e0209d692841243c6e239e94adc2630": "keychron_q3_jis_hardened.bin",
+  "9d9b50f8445ead80191aee0b9fe76def5d83ce14155affa924c05fcadc8f1d87": "keychron_q3_jis_encoder_hardened.bin",
+};
+// STM32L432: 64 KiB SRAM1 at 0x20000000 (SRAM2 at 0x10000000 is aliased right after it)
+const RAM_START = 0x20000000, RAM_END = 0x20010000;
+const FLASH_BASE = 0x08000000;
+
+const $ = id => document.getElementById(id);
+const logEl = $("log");
+function log(msg, cls) {
+  const line = document.createElement("div");
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  if (cls) line.className = cls;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setKV(el, pairs) {
+  el.replaceChildren();
+  for (const [k, v, cls] of pairs) {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v; if (cls) dd.className = cls;
+    el.append(dt, dd);
+  }
+  el.hidden = false;
+}
+const hex = n => "0x" + n.toString(16).padStart(8, "0");
+
+let dfu = null, image = null, imageOk = false, busy = false;
+
+function refresh() {
+  $("backup").disabled = busy || !dfu;
+  $("flash").disabled = busy || !dfu || !image || !imageOk;
+  $("connect").disabled = busy;
+  $("unprotect").disabled = busy || !dfu || !$("unprotect-ok").checked;
+}
+function progress(frac, phase) {
+  const p = $("progress");
+  p.hidden = false; p.value = frac;
+  p.title = phase;
+}
+
+if (!("usb" in navigator)) {
+  const b = $("support");
+  b.hidden = false;
+  b.textContent = window.isSecureContext
+    ? "This browser has no WebUSB. Use Chrome, Edge, Brave or Opera on desktop (Firefox and Safari don't support it)."
+    : "WebUSB needs a secure context: open this file directly (file://) or serve it from https:// or localhost.";
+  $("connect").disabled = true;
+}
+
+$("connect").onclick = async () => {
+  busy = true; refresh();
+  try {
+    if (dfu) { await dfu.device.close().catch(() => {}); dfu = null; }
+    const device = await navigator.usb.requestDevice({ filters: [STM32_DFU_FILTER] });
+    dfu = await DfuSe.open(device, log);
+    const segs = dfu.layout.segments.map(s => `${s.count}×${s.sectorSize / 1024} KiB`).join(", ");
+    setKV($("devinfo"), [
+      ["Device", `${device.productName || "STM32 DFU"} (${device.manufacturerName || "?"})`],
+      ["Memory", `${dfu.layout.name}: ${hex(dfu.flash)}–${hex(dfu.flashEnd)} (${segs})`],
+      ["Block size", dfu.transferSize + " bytes"],
+    ]);
+    $("devstatus").textContent = "Connected";
+    $("devstatus").className = "ok";
+    log("Connected to " + (device.productName || "STM32 DFU device"), "ok");
+    if (dfu.flash !== FLASH_BASE) log("Unexpected flash base " + hex(dfu.flash), "warn");
+    await checkProtection(device, segs);
+    if (image) await checkImage();
+  } catch (e) {
+    if (e.name !== "NotFoundError") log("Connect failed: " + e.message, "err");
+    if (/Access denied|Unable to claim/i.test(e.message))
+      log("Linux: add a udev rule for 0483:df11. Windows: bind the WinUSB driver to the DFU device (e.g. with Zadig). Close dfu-util / QMK Toolbox.", "warn");
+  } finally { busy = false; refresh(); }
+};
+
+async function checkProtection(device, segs) {
+  const prot = await dfu.readProtection().catch(e => { log("Could not read option bytes: " + e.message, "warn"); return null; });
+  const readable = await dfu.canRead();
+  const rows = [
+    ["Device", `${device.productName || "STM32 DFU"} (${device.manufacturerName || "?"})`],
+    ["Memory", `${dfu.layout.name}: ${hex(dfu.flash)}–${hex(dfu.flashEnd)} (${segs})`],
+    ["Block size", dfu.transferSize + " bytes"],
+    ["Flash readable", readable ? "yes" : "no", readable ? "ok" : "warn"],
+  ];
+  if (prot) {
+    rows.push(["Read-out protection", prot.level === 0 ? "off (level 0)" : `ON (level ${prot.level}, RDP byte 0x${prot.rdp.toString(16)})`, prot.level ? "warn" : "ok"]);
+    rows.push(["Write protection", prot.wrp.length ? prot.wrp.map(([a, b]) => `pages ${a}–${b}`).join(", ") : "none", prot.wrp.length ? "warn" : "ok"]);
+    log(`Protection: RDP level ${prot.level}, write-protected: ${prot.wrp.length ? prot.wrp.map(([a, b]) => a + "–" + b).join(", ") : "none"}, flash readable: ${readable ? "yes" : "no"}`, prot.level || prot.wrp.length ? "warn" : "ok");
+    if (prot.wrp.length) log("Write protection is set in the option bytes. This page can't change that; STM32CubeProgrammer can.", "warn");
+  } else {
+    log(`Protection: option bytes not readable, flash readable: ${readable ? "yes" : "no"}`, readable ? "" : "warn");
+  }
+  setKV($("devinfo"), rows);
+  // Only offer the chip wipe when the option bytes positively say protection is on.
+  $("protection").hidden = !(prot && prot.level === 1);
+}
+
+$("unprotect-ok").onchange = () => { $("unprotect").disabled = busy || !dfu || !$("unprotect-ok").checked; };
+$("unprotect").onclick = async () => {
+  busy = true; refresh();
+  try {
+    log("Removing protection; the chip will erase itself and restart…", "warn");
+    await dfu.unprotect();
+    await dfu.device.close().catch(() => {});
+    dfu = null;
+    $("protection").hidden = true;
+    $("devstatus").textContent = "Erased, reconnect";
+    $("devstatus").className = "muted";
+    log("Done. Wait a few seconds, unplug, hold the reset button under the spacebar while plugging in, then click Connect again.", "ok");
+  } catch (e) {
+    log("Removing protection failed: " + e.message, "err");
+  } finally { busy = false; $("unprotect-ok").checked = false; refresh(); }
+};
+
+$("backup").onclick = async () => {
+  busy = true; refresh();
+  try {
+    const len = dfu.flashEnd - dfu.flash;
+    log(`Reading ${len / 1024} KiB of flash…`);
+    const data = await dfu.read(dfu.flash, len, progress);
+    const sha = await sha256(data);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([data], { type: "application/octet-stream" }));
+    a.download = `q3-backup-${new Date().toISOString().slice(0, 10)}.bin`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    log(`Backup saved (${len} bytes, SHA-256 ${sha})`, "ok");
+  } catch (e) {
+    log("Backup failed: " + e.message, "err");
+  } finally { busy = false; refresh(); }
+};
+
+async function sha256(bytes) {
+  const d = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function checkImage() {
+  const flashEnd = dfu ? dfu.flashEnd : FLASH_BASE + 256 * 1024;
+  const problems = inspectImage(image.bytes, FLASH_BASE, flashEnd, RAM_START, RAM_END);
+  const known = KNOWN[image.sha];
+  imageOk = problems.length === 0;
+  setKV($("filecheck"), [
+    ["SHA-256", image.sha],
+    ["Known build", known ? "yes: " + known : "no (fine if you built it yourself; compare the hash)", known ? "ok" : "warn"],
+    ["Image check", imageOk ? "looks like a valid STM32 image for 0x08000000" : problems.join("; "), imageOk ? "ok" : "err"],
+  ]);
+  refresh();
+}
+
+$("file").onchange = async ev => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  image = { name: f.name, bytes, sha: await sha256(bytes) };
+  $("fileinfo").textContent = `${f.name} (${bytes.byteLength.toLocaleString()} bytes)`;
+  log(`Loaded ${f.name}, SHA-256 ${image.sha}`);
+  await checkImage();
+};
+
+$("flash").onclick = async () => {
+  if (!confirm(`Flash ${image.name} to the keyboard?`)) return;
+  busy = true; refresh();
+  try {
+    await dfu.write(FLASH_BASE, image.bytes, progress);
+    log("Write complete", "ok");
+    if ($("verify").checked) {
+      log("Verifying…");
+      const back = await dfu.read(FLASH_BASE, image.bytes.byteLength, progress);
+      const bad = back.findIndex((b, i) => b !== image.bytes[i]);
+      if (bad !== -1) throw new Error(`Verify FAILED at offset ${bad}. Do not unplug; flash again.`);
+      log("Verify OK: flash matches the file byte for byte", "ok");
+    }
+    log("Starting the new firmware…");
+    await dfu.leave(FLASH_BASE);
+    await dfu.device.close().catch(() => {});
+    dfu = null;
+    $("devstatus").textContent = "Done, keyboard restarted";
+    log("Done. The keyboard should now work normally.", "ok");
+  } catch (e) {
+    log("Flash failed: " + e.message, "err");
+    log("The ROM bootloader is untouched: re-enter DFU mode and try again.", "warn");
+  } finally { busy = false; refresh(); }
+};
+
+navigator.usb && navigator.usb.addEventListener("disconnect", e => {
+  if (dfu && e.device === dfu.device && !busy) {
+    dfu = null; $("devstatus").textContent = "Disconnected"; $("devstatus").className = "muted"; refresh();
+  }
+});
+</script>
+</body>
+</html>
