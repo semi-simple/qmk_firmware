@@ -9,10 +9,6 @@ on:
   push:
     branches: [hardened-q3]
     tags: ['hardened-q3-v*']
-    paths:
-      - 'users/hardened/**'
-      - 'keyboards/keychron/q3/**'
-      - '.github/workflows/hardened-q3.yml'
   workflow_dispatch:
     inputs:
       release:
@@ -94,3 +90,33 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "Hardened Keychron Q3 firmware ($TAG)" \
             --notes "Built by GitHub Actions from commit $GITHUB_SHA and checked byte-for-byte against users/hardened/SHA256SUMS. Flash with users/hardened/flasher.html or dfu-util; see users/hardened/README.md."
+
+  # Serves flasher.html at https://<owner>.github.io/<repo>/ (Settings -> Pages -> Source: GitHub Actions)
+  pages:
+    if: github.ref == 'refs/heads/hardened-q3'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: users/hardened
+      - name: Assemble the site
+        run: |
+          mkdir site
+          cp users/hardened/flasher.html site/index.html
+          cp users/hardened/SHA256SUMS site/
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

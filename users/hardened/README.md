@@ -36,7 +36,8 @@ the binaries are byte-identical to `SHA256SUMS`. The GitHub Actions workflow
 
 1. Unplug, hold Esc, plug in. Keys and lights go dark: the keyboard is in DFU mode.
    Fallback: remove the spacebar keycap and hold the PCB reset button while plugging in.
-2. Open `flasher.html` from disk in Chrome or Edge (it makes no network requests), or run
+2. Open `flasher.html` from disk in Chrome or Edge (it makes no network requests), or the
+   copy GitHub Pages serves from this branch at https://semi-simple.github.io/qmk_firmware/, or run
    `dfu-util -a 0 -d 0483:df11 -s 0x08000000:leave -D keychron_q3_ansi_hardened.bin`.
 
 Entering DFU with Esc also resets saved settings such as RGB mode.
