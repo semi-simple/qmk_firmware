@@ -97,7 +97,8 @@ such as `hardened-q3-v2`.
    copy GitHub Pages serves from this branch at https://semi-simple.github.io/qmk_firmware/, or run
    `dfu-util -a 0 -d 0483:df11 -s 0x08000000:leave -D keychron_q3_ansi_hardened.bin`.
 
-Entering DFU with Esc also resets saved settings such as RGB mode.
+Entering DFU with Esc also resets saved settings such as RGB mode. N-key rollover
+is on by default (`users/hardened/config.h`); Fn+N toggles it.
 
 ## Check what is on the keyboard
 
