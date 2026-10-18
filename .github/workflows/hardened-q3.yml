@@ -10,6 +10,8 @@ on:
   push:
     branches: [hardened-q3]
     tags: ['hardened-q3-v*']
+  pull_request:
+    branches: [hardened-q3]
   workflow_dispatch:
     inputs:
       release:
@@ -52,6 +54,14 @@ jobs:
               exit 1
             fi
             cp ".build/keychron_q3_${v}_hardened.bin" out/
+          done
+
+      - name: Check what the computer sees over USB
+        run: |
+          "$RUNNER_TEMP/venv/bin/pip" install -q unicorn==2.1.4 pyelftools==0.33
+          for v in ansi ansi_encoder iso iso_encoder jis jis_encoder; do
+            echo "== $v"
+            "$RUNNER_TEMP/venv/bin/python" users/hardened/test/usb_descriptors.py ".build/keychron_q3_${v}_hardened.elf"
           done
 
       - name: Record the hashes

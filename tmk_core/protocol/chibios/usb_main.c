@@ -71,6 +71,18 @@ static bool __attribute__((__unused__)) receive_report(usb_endpoint_out_lut_t en
 #endif
 
 /*
+ * Let the keyboard present its interfaces differently from the built-in
+ * descriptors, for example hide one. usb_descriptor_override_kb() may replace
+ * any descriptor; usb_interface_from_host_kb() maps the interface number the
+ * host uses to the one QMK uses. The defaults keep everything as built.
+ */
+__attribute__((weak)) void usb_descriptor_override_kb(uint16_t wValue, const void **address, uint16_t *size) {}
+
+__attribute__((weak)) uint8_t usb_interface_from_host_kb(uint8_t interface) {
+    return interface;
+}
+
+/*
  * Handles the GET_DESCRIPTOR callback
  *
  * Returns the proper descriptor
@@ -79,8 +91,11 @@ static const USBDescriptor *usb_get_descriptor_cb(USBDriver *usbp, uint8_t dtype
     usb_control_request_t *setup = (usb_control_request_t *)usbp->setup;
 
     static USBDescriptor descriptor;
-    descriptor.ud_string = NULL;
-    descriptor.ud_size   = get_usb_descriptor(setup->wValue.word, setup->wIndex, setup->wLength, (const void **const)&descriptor.ud_string);
+    const void          *address = NULL;
+    uint16_t             size    = get_usb_descriptor(setup->wValue.word, setup->wIndex, setup->wLength, &address);
+    usb_descriptor_override_kb(setup->wValue.word, &address, &size);
+    descriptor.ud_string = address;
+    descriptor.ud_size   = size;
 
     if (descriptor.ud_string == NULL) {
         return NULL;
@@ -248,6 +263,11 @@ static void set_led_transfer_cb(USBDriver *usbp) {
 
 static bool usb_requests_hook_cb(USBDriver *usbp) {
     usb_control_request_t *setup = (usb_control_request_t *)usbp->setup;
+
+    /* Translate the host's interface number before anything reads it */
+    if ((setup->bmRequestType & USB_RTYPE_RECIPIENT_MASK) == USB_RTYPE_RECIPIENT_INTERFACE) {
+        setup->wIndex = usb_interface_from_host_kb(setup->wIndex & 0xFF);
+    }
 
     /* Handle HID class specific requests */
     if ((setup->bmRequestType & (USB_RTYPE_TYPE_MASK | USB_RTYPE_RECIPIENT_MASK)) == (USB_RTYPE_TYPE_CLASS | USB_RTYPE_RECIPIENT_INTERFACE)) {

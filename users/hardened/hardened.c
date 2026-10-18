@@ -9,6 +9,11 @@
 #include QMK_KEYBOARD_H
 #include "bootloader.h"
 #include "keymap_introspection.h"
+#ifdef HARDENED_VIA_MODE
+#    include <string.h>
+#    include "usb_descriptor.h"
+#    include "usb_main.h"
+#endif
 
 #if defined(XAP_ENABLE) || defined(CONSOLE_ENABLE) || defined(VIRTSER_ENABLE) || defined(MIDI_ENABLE)
 #    error "hardened: host-to-keyboard data channels other than VIA must be disabled"
@@ -53,6 +58,7 @@ static bool bootloader_window_closed = false;
 static bool via_mode                 = false; // stays false without HARDENED_VIA_MODE
 #ifdef HARDENED_VIA_MODE
 static bool via_key_held_from_boot = false;
+static bool usb_shows_via          = false; // VIA's interface is in what the host sees
 #endif
 
 #ifdef RGB_MATRIX_ENABLE
@@ -64,6 +70,12 @@ void keyboard_post_init_user(void) {
 #ifdef HARDENED_VIA_MODE
     via_mode               = matrix_get_row(VIA_MODE_ROW) & ((matrix_row_t)1 << VIA_MODE_COLUMN);
     via_key_held_from_boot = via_mode;
+    if (via_mode) {
+        // USB came up before the keys were read, without VIA's interface.
+        // Reconnect so the host enumerates the keyboard again, this time with it.
+        usb_shows_via = true;
+        restart_usb_driver(&USB_DRIVER);
+    }
 #endif
 #ifdef RGB_MATRIX_ENABLE
     boot_sweep_start();
@@ -100,6 +112,44 @@ uint16_t keymap_key_to_keycode(uint8_t layer, keypos_t key) {
     }
 #    endif
     return KC_NO;
+}
+
+// Copies the configuration descriptor `in` to `out` without interface `drop`
+// (its interface, HID and endpoint descriptors), renumbering the interfaces
+// after it so the numbers stay contiguous. Returns the new total length.
+uint16_t config_without_interface(const uint8_t *in, uint16_t len, uint8_t drop, uint8_t *out) {
+    uint16_t out_len  = 0;
+    uint8_t  removed  = 0;
+    bool     skipping = false;
+    for (uint16_t i = 0; i + 2 <= len && in[i] >= 2 && i + in[i] <= len; i += in[i]) {
+        if (in[i + 1] == DTYPE_Interface) {
+            skipping = in[i + 2] == drop;
+            if (skipping && in[i + 3] == 0) removed++; // alternate setting 0 counts the interface
+        }
+        if (skipping) continue;
+        memcpy(out + out_len, in + i, in[i]);
+        if (in[i + 1] == DTYPE_Interface && out[out_len + 2] > drop) out[out_len + 2]--;
+        out_len += in[i];
+    }
+    out[2] = out_len & 0xFF; // wTotalLength
+    out[3] = out_len >> 8;
+    out[4] -= removed; // bNumInterfaces
+    return out_len;
+}
+
+// In hardened mode the host is shown the keyboard without VIA's interface.
+void usb_descriptor_override_kb(uint16_t wValue, const void **address, uint16_t *size) {
+    static uint8_t  hidden[sizeof(USB_Descriptor_Configuration_t)];
+    static uint16_t hidden_size = 0;
+    if (usb_shows_via || (wValue >> 8) != DTYPE_Configuration || *address == NULL) return;
+    if (hidden_size == 0) hidden_size = config_without_interface(*address, *size, RAW_INTERFACE, hidden);
+    *address = hidden;
+    *size    = hidden_size;
+}
+
+// The host numbers the interfaces after the hidden one one lower than QMK does.
+uint8_t usb_interface_from_host_kb(uint8_t interface) {
+    return (!usb_shows_via && interface >= RAW_INTERFACE) ? interface + 1 : interface;
 }
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
