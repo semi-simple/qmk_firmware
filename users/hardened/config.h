@@ -10,3 +10,6 @@
 // (0x9D, 0x9D, 0x44), which makes all lighting dimmer than stock.
 #undef SNLED27351_CURRENT_TUNE
 #define SNLED27351_CURRENT_TUNE {0xC8, 0xC8, 0x68, 0xC8, 0xC8, 0x68, 0xC8, 0xC8, 0x68, 0xC8, 0xC8, 0x68}
+
+// Turn the lighting off after 10 minutes without key presses; any key brings it back
+#define RGB_MATRIX_TIMEOUT 600000
