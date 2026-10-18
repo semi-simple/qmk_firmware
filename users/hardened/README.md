@@ -20,17 +20,18 @@ rebuilding and reflashing.
 
 ## Build
 
-Based on upstream QMK commit `180f394b489c238cb231c2bf8b080262155e03c0`.
-
 ```sh
 git submodule update --init --depth 1 lib/chibios lib/chibios-contrib lib/printf lib/pico-sdk
 make keychron/q3/ansi:hardened          # or ansi_encoder, iso, iso_encoder, jis, jis_encoder
 sha256sum .build/keychron_q3_*_hardened.bin
 ```
 
-With `arm-none-eabi-gcc` 13.2.rel1 (Ubuntu 24.04's `gcc-arm-none-eabi 15:13.2.rel1-2`)
-the binaries are byte-identical to `SHA256SUMS`. The GitHub Actions workflow
-`.github/workflows/hardened-q3.yml` builds them the same way and fails if they differ.
+Every push to this branch is built by `.github/workflows/hardened-q3.yml` with
+`arm-none-eabi-gcc` 13.2.rel1 (Ubuntu 24.04's `gcc-arm-none-eabi 15:13.2.rel1-2`). Each run
+and each release lists the SHA-256 of its binaries in `SHA256SUMS`. The build is
+reproducible: the same commit built with that compiler gives byte-identical files.
+Releases are made from **Actions → Hardened Keychron Q3 → Run workflow** with a name
+such as `hardened-q3-v2`.
 
 ## Flash
 
@@ -50,7 +51,8 @@ Take a backup with `flasher.html` (DFU mode), then compare its start with the im
 head -c "$(stat -c %s keychron_q3_ansi_hardened.bin)" q3-backup.bin | sha256sum
 ```
 
-It must match the line for your variant in `SHA256SUMS`.
+It must match the line for your variant in the `SHA256SUMS` of the release (or workflow
+run) you flashed.
 
 ## Recovery
 

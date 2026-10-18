@@ -387,15 +387,6 @@ if (typeof module !== "undefined") module.exports = { DfuSe, parseMemoryLayout, 
 
 <script>
 "use strict";
-// SHA-256 of the builds produced in the Claude session (qmk_firmware @ 180f394b).
-const KNOWN = {
-  "e0fce9caf855d01ec6aa0b880c29742e0288f4fce7b82c0945398e9589bb427f": "keychron_q3_ansi_hardened.bin",
-  "c5c1920518d95b3401171bdda55f0a1370ee7bec91f47a5477f7576c62436840": "keychron_q3_ansi_encoder_hardened.bin",
-  "0c43d04e7d0e70eaacf824c787a301e4e426c26fecc323288461ffd7d8aecf96": "keychron_q3_iso_hardened.bin",
-  "744e48826086b054105462071fc2ad354a0acb9b5d27e6fc7d9527b7fe1619aa": "keychron_q3_iso_encoder_hardened.bin",
-  "2c95a5eabb48af6ace654daf66fa8ddb5e0209d692841243c6e239e94adc2630": "keychron_q3_jis_hardened.bin",
-  "9d9b50f8445ead80191aee0b9fe76def5d83ce14155affa924c05fcadc8f1d87": "keychron_q3_jis_encoder_hardened.bin",
-};
 // STM32L432: 64 KiB SRAM1 at 0x20000000 (SRAM2 at 0x10000000 is aliased right after it)
 const RAM_START = 0x20000000, RAM_END = 0x20010000;
 const FLASH_BASE = 0x08000000;
@@ -533,11 +524,9 @@ async function sha256(bytes) {
 async function checkImage() {
   const flashEnd = dfu ? dfu.flashEnd : FLASH_BASE + 256 * 1024;
   const problems = inspectImage(image.bytes, FLASH_BASE, flashEnd, RAM_START, RAM_END);
-  const known = KNOWN[image.sha];
   imageOk = problems.length === 0;
   setKV($("filecheck"), [
-    ["SHA-256", image.sha],
-    ["Known build", known ? "yes: " + known : "no (fine if you built it yourself; compare the hash)", known ? "ok" : "warn"],
+    ["SHA-256", image.sha + "  (compare with SHA256SUMS from the release you downloaded)"],
     ["Image check", imageOk ? "looks like a valid STM32 image for 0x08000000" : problems.join("; "), imageOk ? "ok" : "err"],
   ]);
   refresh();

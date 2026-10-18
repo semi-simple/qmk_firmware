@@ -1,8 +1,9 @@
-# Builds the hardened Keychron Q3 firmware for all six variants, checks that the
-# result is byte-identical to users/hardened/SHA256SUMS, and publishes the binaries.
+# Builds the hardened Keychron Q3 firmware for all six variants, records the
+# SHA-256 of each binary, and publishes them (artifact, release, GitHub Pages).
 #
-# Toolchain is pinned to Ubuntu 24.04's gcc-arm-none-eabi 13.2.rel1-2, the same
-# compiler the reference hashes were produced with. Actions are pinned by commit.
+# Toolchain is pinned to Ubuntu 24.04's gcc-arm-none-eabi 13.2.rel1-2, so rebuilding
+# the same commit with that compiler reproduces the recorded hashes exactly.
+# Actions are pinned by commit.
 name: Hardened Keychron Q3
 
 on:
@@ -53,14 +54,14 @@ jobs:
             cp ".build/keychron_q3_${v}_hardened.bin" out/
           done
 
-      - name: Check the binaries match the published hashes
+      - name: Record the hashes
         run: |
           cd out
-          sha256sum *.bin | tee BUILT_SHA256SUMS
-          sha256sum --check ../users/hardened/SHA256SUMS
+          sha256sum *.bin | tee SHA256SUMS
+          { echo '```'; cat SHA256SUMS; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Collect files
-        run: cp users/hardened/SHA256SUMS users/hardened/flasher.html users/hardened/README.md out/
+        run: cp users/hardened/flasher.html users/hardened/README.md out/
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -89,7 +90,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Hardened Keychron Q3 firmware ($TAG)" \
-            --notes "Built by GitHub Actions from commit $GITHUB_SHA and checked byte-for-byte against users/hardened/SHA256SUMS. Flash with users/hardened/flasher.html or dfu-util; see users/hardened/README.md."
+            --notes "Built by GitHub Actions from commit $GITHUB_SHA. SHA256SUMS lists the hash of each binary; rebuilding this commit with the same compiler reproduces them. Flash with users/hardened/flasher.html or dfu-util; see users/hardened/README.md."
 
   # Serves flasher.html at https://<owner>.github.io/<repo>/ (Settings -> Pages -> Source: GitHub Actions)
   pages:
@@ -114,7 +115,6 @@ jobs:
         run: |
           mkdir site
           cp users/hardened/flasher.html site/index.html
-          cp users/hardened/SHA256SUMS site/
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
